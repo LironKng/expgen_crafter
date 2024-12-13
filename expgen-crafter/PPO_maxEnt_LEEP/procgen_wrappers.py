@@ -345,6 +345,19 @@ class VecNormalize(VecEnvWrapper):
         return self._obfilt(obs)
 
 
+class ModifiedObservationWrapper(gym.ObservationWrapper):
+    def __init__(self, env):
+        super().__init__(env)
+        self.observation_space = gym.spaces.Box(
+            low=0, high=255,
+            shape=(3, 64, 64),
+            dtype=np.uint8
+        )
+
+    def observation(self, obs):
+        return obs
+
+
 class TransposeFrame(VecEnvWrapper):
     def __init__(self, env):
         super().__init__(venv=env)

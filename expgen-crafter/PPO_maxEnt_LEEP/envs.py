@@ -1,5 +1,8 @@
-
+import gym
+import numpy as np
+import torch
 from gym.spaces.box import Box
+
 from procgen import ProcgenEnv
 from PPO_maxEnt_LEEP.procgen_wrappers import *
 

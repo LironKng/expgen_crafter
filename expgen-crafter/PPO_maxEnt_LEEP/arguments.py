@@ -56,7 +56,8 @@ def get_args():
     parser.add_argument(
         '--num-test-level', type=int, default=200, help='num test level (default: 200)')
     parser.add_argument(
-        '--distribution-mode', type=str, default='easy', help='distribution mode for procgen environment (default: easy)')
+        '--distribution-mode', type=str, default='easy',
+        help='distribution mode for procgen environment (default: easy)')
     parser.add_argument(
         '--cuda-deterministic',
         action='store_true',
@@ -105,11 +106,11 @@ def get_args():
     parser.add_argument(
         '--num-env-steps',
         type=int,
-        default=25e6,
+        default=25e6,  # Changed By LIRON from 25e6
         help='number of environment steps to train (default: 25e6)')
     parser.add_argument(
         '--env-name',
-        default='maze',
+        default='crafter',
         help='environment to train on (default: maze)')
     parser.add_argument(
         '--log-dir',
@@ -131,9 +132,9 @@ def get_args():
     parser.add_argument(
         '--gpu_device',
         type=int,
-        default = int(0),
+        default=int(0),
         required=False,
-        help = 'visible device in CUDA (default: 0)')
+        help='visible device in CUDA (default: 0)')
     parser.add_argument(
         '--use-proper-time-limits',
         action='store_true',

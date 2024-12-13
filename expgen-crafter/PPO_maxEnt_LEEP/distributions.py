@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn as nn
 
@@ -7,6 +6,7 @@ from PPO_maxEnt_LEEP.utils import AddBias, init
 """
 Modify standard PyTorch distributions so they are compatible with this code.
 """
+
 
 # Categorical
 class FixedCategorical(torch.distributions.Categorical):

@@ -1,8 +1,7 @@
-
 from PPO_maxEnt_LEEP import utils
 from PPO_maxEnt_LEEP.arguments import get_args
 from PPO_maxEnt_LEEP.envs import make_ProcgenEnvs
-from PPO_maxEnt_LEEP.model import Policy,ImpalaModel
+from PPO_maxEnt_LEEP.model import Policy, ImpalaModel
 from evaluation import evaluate_procgen_ensemble
 from PPO_maxEnt_LEEP.procgen_wrappers import *
 from PPO_maxEnt_LEEP.logger import Logger
@@ -10,7 +9,12 @@ import PPO_maxEnt_LEEP.hyperparams as hps
 import pandas as pd
 import torch
 
-EVAL_ENVS = ['train_eval','test_eval']
+from crafter.env import Env
+from functools import partial
+from PPO_maxEnt_LEEP.envs import VecPyTorch
+
+EVAL_ENVS = ['train_eval', 'test_eval']
+
 
 def main():
     args = get_args()
@@ -34,13 +38,48 @@ def main():
     with open(logdir + '/args.csv', 'w') as f:
         argslog.to_csv(f, index=False)
 
-    progresslog = pd.DataFrame(columns=['timesteps', 'train mean', 'train min', 'train max', 'test mean', 'test min', 'test max'])
+    progresslog = pd.DataFrame(
+        columns=['timesteps', 'train mean', 'train min', 'train max', 'test mean', 'test min', 'test max'])
     torch.set_num_threads(1)
     device = torch.device("cuda:{}".format(args.gpu_device) if args.cuda else "cpu")
 
     print('making envs...')
     # Test envs
     eval_envs_dic = {}
+
+    # Liron your code is here!!! #########################################
+    """
+    # Training envs
+    seeds = np.random.randint(args.start_level, args.num_level, size=args.num_processes)
+    env_fns = [partial(Env, seed=seed) for seed in seeds]
+    eval_envs_dic['train_eval'] = gym.vector.AsyncVectorEnv(env_fns)
+    eval_envs_dic['train_eval'].observation_space = gym.spaces.Box(low=0, high=255, shape=(
+        eval_envs_dic['train_eval'].observation_space.shape[1],
+        eval_envs_dic['train_eval'].observation_space.shape[2],
+        eval_envs_dic['train_eval'].observation_space.shape[3]),
+                                            dtype=np.uint8)
+    eval_envs_dic['train_eval'].action_space = eval_envs_dic['train_eval'].action_space[0]
+    envs = TransposeFrame(eval_envs_dic['train_eval'])
+    envs = VecPyTorch(envs, 'cuda')
+    envs = ScaledFloatFrame(envs)
+
+    # Test envs
+    # Test environments are sampled from the full distribution of levels
+    test_start_level = args.start_level + args.num_level + 1
+    seeds = np.random.randint(test_start_level, 2 ** 31 - 1, size=args.num_processes)
+    env_fns = [partial(Env, seed=seed) for seed in seeds]
+    eval_envs_dic['test_eval'] = gym.vector.AsyncVectorEnv(env_fns)
+    eval_envs_dic['test_eval'].observation_space = gym.spaces.Box(low=0, high=255, shape=(
+        eval_envs_dic['test_eval'].observation_space.shape[1], eval_envs_dic['test_eval'].observation_space.shape[2],
+        eval_envs_dic['test_eval'].observation_space.shape[3]),
+                                                dtype=np.uint8)
+    eval_envs_dic['test_eval'].action_space = eval_envs_dic['test_eval'].action_space[0]
+    eval_envs_dic['test_eval'] = TransposeFrame(eval_envs_dic['test_eval'])
+    eval_envs_dic['test_eval'] = VecPyTorch(eval_envs_dic['test_eval'], 'cuda')
+    eval_envs_dic['test_eval'] = ScaledFloatFrame(eval_envs_dic['test_eval'])
+    """
+    ########################################################################
+
     eval_envs_dic['train_eval'] = make_ProcgenEnvs(num_envs=args.num_processes,
                                                    env_name=args.env_name,
                                                    start_level=args.start_level,
@@ -78,28 +117,28 @@ def main():
         eval_envs_dic['train_eval'].observation_space.shape,
         eval_envs_dic['train_eval'].action_space,
         base=ImpalaModel,
-        base_kwargs={'recurrent': False,'hidden_size': args.recurrent_hidden_size})
+        base_kwargs={'recurrent': False, 'hidden_size': args.recurrent_hidden_size})
     actor_critic.to(device)
 
     actor_critic1 = Policy(
         eval_envs_dic['train_eval'].observation_space.shape,
         eval_envs_dic['train_eval'].action_space,
         base=ImpalaModel,
-        base_kwargs={'recurrent': False,'hidden_size': args.recurrent_hidden_size})
+        base_kwargs={'recurrent': False, 'hidden_size': args.recurrent_hidden_size})
     actor_critic1.to(device)
 
     actor_critic2 = Policy(
         eval_envs_dic['train_eval'].observation_space.shape,
         eval_envs_dic['train_eval'].action_space,
         base=ImpalaModel,
-        base_kwargs={'recurrent': False,'hidden_size': args.recurrent_hidden_size})
+        base_kwargs={'recurrent': False, 'hidden_size': args.recurrent_hidden_size})
     actor_critic2.to(device)
 
     actor_critic3 = Policy(
         eval_envs_dic['train_eval'].observation_space.shape,
         eval_envs_dic['train_eval'].action_space,
         base=ImpalaModel,
-        base_kwargs={'recurrent': False,'hidden_size': args.recurrent_hidden_size})
+        base_kwargs={'recurrent': False, 'hidden_size': args.recurrent_hidden_size})
     actor_critic3.to(device)
 
     actor_critic4 = Policy(
@@ -148,65 +187,67 @@ def main():
         eval_envs_dic['train_eval'].observation_space.shape,
         eval_envs_dic['train_eval'].action_space,
         base=ImpalaModel,
-        base_kwargs={'recurrent': True,'hidden_size': args.recurrent_hidden_size})
+        base_kwargs={'recurrent': True, 'hidden_size': args.recurrent_hidden_size})
     actor_critic_maxEnt.to(device)
 
-    save_path =  args.env_name + '_ppo_seed_0'
+    save_path = args.env_name + '_ppo_seed_0'
     save_path = os.path.join(os.path.expanduser(args.log_dir), save_path)
     actor_critic_weighs = torch.load(os.path.join(save_path, args.env_name + '-epoch-1524.pt'), map_location=device)
     actor_critic.load_state_dict(actor_critic_weighs['state_dict'])
 
-    save_path =  args.env_name + '_ppo_seed_1'
+    save_path = args.env_name + '_ppo_seed_1'
     save_path = os.path.join(os.path.expanduser(args.log_dir), save_path)
     actor_critic_weighs = torch.load(os.path.join(save_path, args.env_name + '-epoch-1524.pt'), map_location=device)
     actor_critic1.load_state_dict(actor_critic_weighs['state_dict'])
 
-    save_path =  args.env_name + '_ppo_seed_2'
+    save_path = args.env_name + '_ppo_seed_2'
     save_path = os.path.join(os.path.expanduser(args.log_dir), save_path)
     actor_critic_weighs = torch.load(os.path.join(save_path, args.env_name + '-epoch-1524.pt'), map_location=device)
     actor_critic2.load_state_dict(actor_critic_weighs['state_dict'])
 
-    save_path =  args.env_name + '_ppo_seed_3'
+    save_path = args.env_name + '_ppo_seed_3'
     save_path = os.path.join(os.path.expanduser(args.log_dir), save_path)
     actor_critic_weighs = torch.load(os.path.join(save_path, args.env_name + '-epoch-1524.pt'), map_location=device)
     actor_critic3.load_state_dict(actor_critic_weighs['state_dict'])
 
-    save_path =  args.env_name + '_ppo_seed_4'
+    save_path = args.env_name + '_ppo_seed_4'
     save_path = os.path.join(os.path.expanduser(args.log_dir), save_path)
-    actor_critic_weighs = torch.load(os.path.join(save_path, args.env_name + '-epoch-1524.pt'),map_location=device)
+    actor_critic_weighs = torch.load(os.path.join(save_path, args.env_name + '-epoch-1524.pt'), map_location=device)
     actor_critic4.load_state_dict(actor_critic_weighs['state_dict'])
 
-    save_path =  args.env_name + '_ppo_seed_5'
+    save_path = args.env_name + '_ppo_seed_5'
     save_path = os.path.join(os.path.expanduser(args.log_dir), save_path)
-    actor_critic_weighs = torch.load(os.path.join(save_path, args.env_name + '-epoch-1524.pt'),map_location=device)
+    actor_critic_weighs = torch.load(os.path.join(save_path, args.env_name + '-epoch-1524.pt'), map_location=device)
     actor_critic5.load_state_dict(actor_critic_weighs['state_dict'])
 
-    save_path =  args.env_name + '_ppo_seed_6'
+    save_path = args.env_name + '_ppo_seed_6'
     save_path = os.path.join(os.path.expanduser(args.log_dir), save_path)
-    actor_critic_weighs = torch.load(os.path.join(save_path, args.env_name + '-epoch-1524.pt'),map_location=device)
+    actor_critic_weighs = torch.load(os.path.join(save_path, args.env_name + '-epoch-1524.pt'), map_location=device)
     actor_critic6.load_state_dict(actor_critic_weighs['state_dict'])
 
-    save_path =  args.env_name + '_ppo_seed_7'
+    save_path = args.env_name + '_ppo_seed_7'
     save_path = os.path.join(os.path.expanduser(args.log_dir), save_path)
-    actor_critic_weighs = torch.load(os.path.join(save_path, args.env_name + '-epoch-1524.pt'),map_location=device)
+    actor_critic_weighs = torch.load(os.path.join(save_path, args.env_name + '-epoch-1524.pt'), map_location=device)
     actor_critic7.load_state_dict(actor_critic_weighs['state_dict'])
 
-    save_path =  args.env_name + '_ppo_seed_8'
+    save_path = args.env_name + '_ppo_seed_8'
     save_path = os.path.join(os.path.expanduser(args.log_dir), save_path)
-    actor_critic_weighs = torch.load(os.path.join(save_path, args.env_name + '-epoch-1524.pt'),map_location=device)
+    actor_critic_weighs = torch.load(os.path.join(save_path, args.env_name + '-epoch-1524.pt'), map_location=device)
     actor_critic8.load_state_dict(actor_critic_weighs['state_dict'])
 
-    save_path =  args.env_name + '_ppo_seed_9'
+    save_path = args.env_name + '_ppo_seed_9'
     save_path = os.path.join(os.path.expanduser(args.log_dir), save_path)
-    actor_critic_weighs = torch.load(os.path.join(save_path, args.env_name + '-epoch-1524.pt'),map_location=device)
+    actor_critic_weighs = torch.load(os.path.join(save_path, args.env_name + '-epoch-1524.pt'), map_location=device)
     actor_critic9.load_state_dict(actor_critic_weighs['state_dict'])
 
-    save_path =  args.env_name + '_ppo_seed_0_maxEnt'
+    save_path = args.env_name + '_ppo_seed_0_maxEnt'
     save_path = os.path.join(os.path.expanduser(args.log_dir), save_path)
-    actor_critic_weighs = torch.load(os.path.join(save_path,  args.env_name + '-epoch-6100.pt'), map_location=device)
+    actor_critic_weighs = torch.load(os.path.join(save_path, args.env_name + '-epoch-6100.pt'), map_location=device)
     actor_critic_maxEnt.load_state_dict(actor_critic_weighs['state_dict'])
 
-    logger = Logger(args.num_processes, eval_envs_dic['train_eval'].observation_space.shape, eval_envs_dic['train_eval'].observation_space.shape, actor_critic_maxEnt.recurrent_hidden_state_size, device=device)
+    logger = Logger(args.num_processes, eval_envs_dic['train_eval'].observation_space.shape,
+                    eval_envs_dic['train_eval'].observation_space.shape,
+                    actor_critic_maxEnt.recurrent_hidden_state_size, device=device)
 
     obs_train = eval_envs_dic['train_eval'].reset()
     logger.obs['train_eval'].copy_(obs_train)
@@ -220,7 +261,7 @@ def main():
     num_updates = int(
         num_env_steps) // args.num_steps // args.num_processes
 
-    for j in range(args.continue_from_epoch, args.continue_from_epoch+num_updates):
+    for j in range(args.continue_from_epoch, args.continue_from_epoch + num_updates):
 
         actor_critic.eval()
         actor_critic1.eval()
@@ -241,14 +282,33 @@ def main():
         eval_dic_done = {}
         num_agree = hps.num_agree[args.env_name]
         for eval_disp_name in EVAL_ENVS:
-            eval_dic_rew[eval_disp_name], eval_dic_done[eval_disp_name] = evaluate_procgen_ensemble(actor_critic, actor_critic1, actor_critic2, actor_critic3, actor_critic4, actor_critic5, actor_critic6, actor_critic7, actor_critic8, actor_critic9,
-                                                                                                    actor_critic_maxEnt, eval_envs_dic, eval_disp_name,
-                                                                                                    args.num_processes, device, args.num_steps, logger, deterministic=False, num_detEnt=args.num_detEnt, rand_act=args.rand_act,
-                                                                                                    num_ensemble=args.num_ensemble, num_agree=num_agree, maze_miner=maze_miner, num_agent=args.num_agent)
-
+            eval_dic_rew[eval_disp_name], eval_dic_done[eval_disp_name] = evaluate_procgen_ensemble(actor_critic,
+                                                                                                    actor_critic1,
+                                                                                                    actor_critic2,
+                                                                                                    actor_critic3,
+                                                                                                    actor_critic4,
+                                                                                                    actor_critic5,
+                                                                                                    actor_critic6,
+                                                                                                    actor_critic7,
+                                                                                                    actor_critic8,
+                                                                                                    actor_critic9,
+                                                                                                    actor_critic_maxEnt,
+                                                                                                    eval_envs_dic,
+                                                                                                    eval_disp_name,
+                                                                                                    args.num_processes,
+                                                                                                    device,
+                                                                                                    args.num_steps,
+                                                                                                    logger,
+                                                                                                    deterministic=False,
+                                                                                                    num_detEnt=args.num_detEnt,
+                                                                                                    rand_act=args.rand_act,
+                                                                                                    num_ensemble=args.num_ensemble,
+                                                                                                    num_agree=num_agree,
+                                                                                                    maze_miner=maze_miner,
+                                                                                                    num_agent=args.num_agent)
 
         logger.feed_train(eval_dic_rew['train_eval'], eval_dic_done['train_eval'])
-        logger.feed_eval( eval_dic_rew['test_eval'], eval_dic_done['test_eval'])
+        logger.feed_eval(eval_dic_rew['test_eval'], eval_dic_done['test_eval'])
 
         # Print some stats
         if j % args.log_interval == 0:
@@ -262,17 +322,25 @@ def main():
                 'train mean/median reward {:.1f}/{:.1f},\n'
                 'train min/max reward {:.1f}/{:.1f}\n'
                 .format(args.num_processes,
-                        episode_statistics['Rewards/mean_episodes']['train'], episode_statistics['Rewards/median_episodes']['train'],
-                        episode_statistics['Rewards/min_episodes']['train'], episode_statistics['Rewards/max_episodes']['train']))
+                        episode_statistics['Rewards/mean_episodes']['train'],
+                        episode_statistics['Rewards/median_episodes']['train'],
+                        episode_statistics['Rewards/min_episodes']['train'],
+                        episode_statistics['Rewards/max_episodes']['train']))
 
             print(
                 'test mean/median reward {:.1f}/{:.1f},\n'
                 'test min/max reward {:.1f}/{:.1f}\n'
-                .format(episode_statistics['Rewards/mean_episodes']['test'], episode_statistics['Rewards/median_episodes']['test'],
-                        episode_statistics['Rewards/min_episodes']['test'], episode_statistics['Rewards/max_episodes']['test']))
+                .format(episode_statistics['Rewards/mean_episodes']['test'],
+                        episode_statistics['Rewards/median_episodes']['test'],
+                        episode_statistics['Rewards/min_episodes']['test'],
+                        episode_statistics['Rewards/max_episodes']['test']))
 
-            log = [total_num_steps] + [episode_statistics['Rewards/mean_episodes']['train']] + [episode_statistics['Rewards/min_episodes']['train']] + [episode_statistics['Rewards/max_episodes']['train']]
-            log += [episode_statistics['Rewards/mean_episodes']['test']] + [episode_statistics['Rewards/min_episodes']['test']] + [episode_statistics['Rewards/max_episodes']['test']]
+            log = [total_num_steps] + [episode_statistics['Rewards/mean_episodes']['train']] + [
+                episode_statistics['Rewards/min_episodes']['train']] + [
+                      episode_statistics['Rewards/max_episodes']['train']]
+            log += [episode_statistics['Rewards/mean_episodes']['test']] + [
+                episode_statistics['Rewards/min_episodes']['test']] + [
+                       episode_statistics['Rewards/max_episodes']['test']]
             progresslog.loc[len(progresslog)] = log
 
             with open(logdir + '/progress_{}_seed_{}.csv'.format(args.env_name, args.seed), 'w') as f:
