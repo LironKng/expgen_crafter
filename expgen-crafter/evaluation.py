@@ -2,6 +2,7 @@ import numpy as np
 import torch
 
 from PPO_maxEnt_LEEP.distributions import FixedCategorical
+from PPO_maxEnt_LEEP.constant import TASKS
 from torch import nn
 
 
@@ -9,6 +10,8 @@ def evaluate_procgen(actor_critic, eval_envs, env_name,
                      device, steps, logger, deterministic=True):
     rew_batch = []
     done_batch = []
+    achievements = []
+    successes = []
 
     for t in range(steps):
         with torch.no_grad():
@@ -31,14 +34,25 @@ def evaluate_procgen(actor_critic, eval_envs, env_name,
             else:
                 rew_batch.append(reward)
             done_batch.append(done)
-
-
             logger.obs[env_name] = next_obs
+            
+            for i, done_ in enumerate(done):
+                if done_:
+                # Collect Achievements data and calc num of successes for each Achievement 
+                    # Achievements
+                    achievement = np.array([infos[i]["achievements"][task] for task in TASKS]) # dict -> np.array of 1 & 0
+                    achievements.append(achievement) # achievements = [achievements achievement]    
+
+                    # Successes
+                    success = (achievements[-1] > 0) # success is vector where: true if achievement[task]>0 else false
+                    successes.append(success)
+
 
     rew_batch = np.array(rew_batch)
     done_batch = np.array(done_batch)
-
-    return rew_batch, done_batch
+    achievements = np.stack(achievements, axis=0).astype(np.int32)
+    successes = np.stack(successes, axis=0).astype(np.int32)
+    return rew_batch, done_batch, successes
 
 
 def maxEnt_oracle(obs_all, action):
