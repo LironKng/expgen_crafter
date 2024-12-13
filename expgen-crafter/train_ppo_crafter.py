@@ -262,6 +262,10 @@ def main():
             # Print stats
             print(f"Epoch number {latest_epoch} / total_num_steps {latest_eval_num_steps}  Score stats")
             print(json.dumps(eval_stats, indent=2))
+            # Uploading score and success_rates to wandb
+            [wandb.log({f"success_rate/{task}": success_rate}, step=latest_eval_num_steps) for task, success_rate in eval_stats["success_rate"].items()]
+            wandb.log({"score": score}, step=latest_eval_num_steps)
+
             ############################
 
             print('Iter {}, num timesteps {}, num training episodes {}, '
